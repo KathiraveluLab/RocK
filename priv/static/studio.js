@@ -235,11 +235,165 @@
     });
   }
 
+  function computeWheelPair(brick, proj) {
+    const box = brickBoundingBox(brick);
+    const { x0, x1, y0, y1, z0 } = box;
+    const rot = brick.rotation || 0;
+    const alongY = rot === 90 || rot === 270;
+    const zCenter = z0 + 0.9;
+    const rRoll = 0.66;
+    const rZ = 1.45;
+    const innerOff = 0.04;
+    const outerOff = 0.52;
+    const centerDepth = (() => {
+      const rc = rotateGridPoint((x0 + x1) / 2, (y0 + y1) / 2, proj.yaw, proj.gridSpan);
+      return rc.u + rc.v;
+    })();
+
+    const makeWheel = (axisPosInner, axisPosOuter, midCross) => {
+      const steps = 18;
+      const innerWorld = [];
+      const outerWorld = [];
+      const hubWorld = [];
+      const pinWorld = [];
+
+      for (let i = 0; i < steps; i++) {
+        const theta = (i / steps) * Math.PI * 2;
+        const cRoll = Math.cos(theta) * rRoll;
+        const cZ = Math.sin(theta) * rZ;
+        const hRoll = Math.cos(theta) * (rRoll * 0.54);
+        const hZ = Math.sin(theta) * (rZ * 0.54);
+        const pRoll = Math.cos(theta) * (rRoll * 0.2);
+        const pZ = Math.sin(theta) * (rZ * 0.2);
+
+        if (alongY) {
+          innerWorld.push({ x: midCross + cRoll, y: axisPosInner, z: zCenter + cZ });
+          outerWorld.push({ x: midCross + cRoll, y: axisPosOuter, z: zCenter + cZ });
+          hubWorld.push({ x: midCross + hRoll, y: axisPosOuter, z: zCenter + hZ });
+          pinWorld.push({ x: midCross + pRoll, y: axisPosOuter, z: zCenter + pZ });
+        } else {
+          innerWorld.push({ x: axisPosInner, y: midCross + cRoll, z: zCenter + cZ });
+          outerWorld.push({ x: axisPosOuter, y: midCross + cRoll, z: zCenter + cZ });
+          hubWorld.push({ x: axisPosOuter, y: midCross + hRoll, z: zCenter + hZ });
+          pinWorld.push({ x: axisPosOuter, y: midCross + pRoll, z: zCenter + pZ });
+        }
+      }
+
+      const outerAvg = alongY
+        ? rotateGridPoint(midCross, axisPosOuter, proj.yaw, proj.gridSpan)
+        : rotateGridPoint(axisPosOuter, midCross, proj.yaw, proj.gridSpan);
+      const innerAvg = alongY
+        ? rotateGridPoint(midCross, axisPosInner, proj.yaw, proj.gridSpan)
+        : rotateGridPoint(axisPosInner, midCross, proj.yaw, proj.gridSpan);
+
+      const outerDepth = outerAvg.u + outerAvg.v;
+      const innerDepth = innerAvg.u + innerAvg.v;
+
+      return {
+        innerPts: innerWorld.map((p) => projectPoint(p.x, p.y, p.z, proj)),
+        outerPts: outerWorld.map((p) => projectPoint(p.x, p.y, p.z, proj)),
+        hubPts: hubWorld.map((p) => projectPoint(p.x, p.y, p.z, proj)),
+        pinPts: pinWorld.map((p) => projectPoint(p.x, p.y, p.z, proj)),
+        outerDepth,
+        innerDepth,
+        isNear: outerDepth >= centerDepth
+      };
+    };
+
+    const wheels = alongY
+      ? [
+          makeWheel(y0 - innerOff, y0 - outerOff, (x0 + x1) / 2),
+          makeWheel(y1 + innerOff, y1 + outerOff, (x0 + x1) / 2)
+        ]
+      : [
+          makeWheel(x0 - innerOff, x0 - outerOff, (y0 + y1) / 2),
+          makeWheel(x1 + innerOff, x1 + outerOff, (y0 + y1) / 2)
+        ];
+
+    return {
+      farWheels: wheels.filter((w) => !w.isNear),
+      nearWheels: wheels.filter((w) => w.isNear)
+    };
+  }
+
+  function drawWheel3D(ctx, wheel, options) {
+    const opts = options || {};
+    const alpha = opts.alpha !== undefined ? opts.alpha : 1.0;
+    const baseHex = opts.overrideHex || "#2563eb";
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    if (opts.wireframeOnly) {
+      const fill = "rgba(37, 99, 235, 0.10)";
+      drawPolygon(ctx, wheel.innerPts, fill, baseHex, 1.3);
+      drawPolygon(ctx, wheel.outerPts, fill, baseHex, 1.5);
+      const step = Math.max(1, Math.floor(wheel.innerPts.length / 4));
+      ctx.strokeStyle = baseHex;
+      ctx.lineWidth = 1.1;
+      for (let i = 0; i < wheel.innerPts.length; i += step) {
+        ctx.beginPath();
+        ctx.moveTo(wheel.innerPts[i].x, wheel.innerPts[i].y);
+        ctx.lineTo(wheel.outerPts[i].x, wheel.outerPts[i].y);
+        ctx.stroke();
+      }
+      ctx.restore();
+      return;
+    }
+
+    const n = wheel.innerPts.length;
+    const outerFront = wheel.outerDepth >= wheel.innerDepth;
+    const backLoop = outerFront ? wheel.innerPts : wheel.outerPts;
+    const frontLoop = outerFront ? wheel.outerPts : wheel.innerPts;
+
+    drawPolygon(ctx, backLoop, "#0f172a", "#0f172a", 0.8);
+
+    const treadQuads = [];
+    for (let i = 0; i < n; i++) {
+      const next = (i + 1) % n;
+      const quad = [backLoop[i], backLoop[next], frontLoop[next], frontLoop[i]];
+      const midY = (quad[0].y + quad[1].y + quad[2].y + quad[3].y) / 4;
+      const treadShade = i < n / 2 ? "#334155" : "#1e293b";
+      treadQuads.push({ quad, midY, treadShade });
+    }
+    treadQuads.sort((a, b) => b.midY - a.midY);
+    for (const tq of treadQuads) {
+      drawPolygon(ctx, tq.quad, tq.treadShade, "#0f172a", 0.45);
+    }
+
+    drawPolygon(ctx, frontLoop, "#1e293b", "#0f172a", 1.1);
+    if (outerFront) {
+      drawPolygon(ctx, wheel.hubPts, "#cbd5e1", "#64748b", 0.9);
+      drawPolygon(ctx, wheel.pinPts, "#94a3b8", "#475569", 0.7);
+    }
+
+    ctx.restore();
+  }
+
+  function drawForegroundWheels(ctx, bricks, proj, options) {
+    for (const brick of bricks) {
+      if (brick.kind === "wheel_axle_2x2") {
+        const pair = computeWheelPair(brick, proj);
+        for (const wheel of pair.nearWheels) {
+          drawWheel3D(ctx, wheel, options);
+        }
+      }
+    }
+  }
+
   function drawBrick(ctx, brick, proj, options) {
     const opts = options || {};
     const box = brickBoundingBox(brick);
     const { x0, x1, y0, y1, z0, z1, dims } = box;
     const baseHex = opts.overrideHex || colorHex(brick.color);
+
+    let wheelPair = null;
+    if (brick.kind === "wheel_axle_2x2") {
+      wheelPair = computeWheelPair(brick, proj);
+      for (const farWheel of wheelPair.farWheels) {
+        drawWheel3D(ctx, farWheel, opts);
+      }
+    }
 
     const alpha = opts.alpha !== undefined ? opts.alpha : 1.0;
     ctx.save();
@@ -309,27 +463,6 @@
       drawPolygon(ctx, [w0, w1, w2, w3], "#e0f2fe", "rgba(15,23,42,0.25)", 0.8);
     }
 
-    if (brick.kind === "wheel_axle_2x2" && !opts.wireframeOnly) {
-      const wheelCenters = [
-        projectPoint(x0, (y0 + y1) / 2, z0 + 0.3, proj),
-        projectPoint(x1, (y0 + y1) / 2, z0 + 0.3, proj)
-      ];
-      for (const wc of wheelCenters) {
-        ctx.beginPath();
-        ctx.ellipse(wc.x, wc.y + proj.plateH * 0.35, proj.tileW * 0.42, proj.tileH * 0.72, 0, 0, Math.PI * 2);
-        ctx.fillStyle = "#1e293b";
-        ctx.fill();
-        ctx.strokeStyle = "#0f172a";
-        ctx.lineWidth = 1;
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.ellipse(wc.x, wc.y + proj.plateH * 0.35, proj.tileW * 0.18, proj.tileH * 0.32, 0, 0, Math.PI * 2);
-        ctx.fillStyle = "#cbd5e1";
-        ctx.fill();
-      }
-    }
-
     if (!opts.wireframeOnly && !isSlope) {
       const studPts = [];
       for (let dx = 0; dx < dims.width; dx++) {
@@ -347,6 +480,13 @@
     }
 
     ctx.restore();
+
+    if (wheelPair && opts.singlePart) {
+      for (const nearWheel of wheelPair.nearWheels) {
+        drawWheel3D(ctx, nearWheel, opts);
+      }
+    }
+
     return topPts.concat(...faces.map((f) => f.pts));
   }
 
@@ -431,17 +571,19 @@
       const placedSigs = new Set(
         state.bricks.map((b) => `${b.kind}:${b.pos.x}:${b.pos.y}:${b.pos.z}:${b.rotation % 180}`)
       );
-      const guideSorted = sortBricksPainter(state.guide_bricks, proj.yaw, GRID_SIZE);
-      for (const gb of guideSorted) {
+      const guideSorted = sortBricksPainter(state.guide_bricks, proj.yaw, GRID_SIZE).filter((gb) => {
         const sig = `${gb.kind}:${gb.pos.x}:${gb.pos.y}:${gb.pos.z}:${gb.rotation % 180}`;
-        if (!placedSigs.has(sig)) {
-          drawBrick(ctx, gb, proj, {
-            alpha: 0.72,
-            wireframeOnly: true,
-            overrideHex: "#2563eb"
-          });
-        }
+        return !placedSigs.has(sig);
+      });
+      const guideOpts = {
+        alpha: 0.72,
+        wireframeOnly: true,
+        overrideHex: "#2563eb"
+      };
+      for (const gb of guideSorted) {
+        drawBrick(ctx, gb, proj, guideOpts);
       }
+      drawForegroundWheels(ctx, guideSorted, proj, guideOpts);
     }
 
     const sortedBricks = sortBricksPainter(state.bricks, proj.yaw, GRID_SIZE);
@@ -466,6 +608,7 @@
       drawBrick(ctx, brick, proj, { alpha: 1.0 });
       appState.renderedPolygons.push({ id: brick.id, polys: hitPolys });
     }
+    drawForegroundWheels(ctx, sortedBricks, proj, { alpha: 1.0 });
 
     if (appState.hoverCell) {
       const kind = appState.draggingKind || state.selected_kind;
@@ -484,7 +627,8 @@
       };
       drawBrick(ctx, ghost, proj, {
         alpha: valid ? 0.55 : 0.45,
-        overrideHex: valid ? colorHex(state.selected_color) : "#ef4444"
+        overrideHex: valid ? colorHex(state.selected_color) : "#ef4444",
+        singlePart: true
       });
     } else {
       els.hudSnapCoords.textContent = "(x: -, y: -, z: -)";
@@ -510,6 +654,7 @@
     for (const b of sorted) {
       drawBrick(ctx, b, proj, { alpha: 1.0 });
     }
+    drawForegroundWheels(ctx, sorted, proj, { alpha: 1.0 });
   }
 
   function renderMiniPartCanvas(canvas, kind, colorId) {
@@ -517,8 +662,9 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const spec = specFor(kind);
     const localSpan = Math.max(spec.width, spec.depth, 3) + 1;
-    const zoom = spec.depth >= 5 ? 0.42 : 0.56;
-    const proj = getProjectionParams(canvas, zoom, 0, localSpan, 0.72);
+    const zoom = spec.depth >= 5 ? 0.42 : kind === "wheel_axle_2x2" ? 0.48 : 0.56;
+    const offsetY = kind === "wheel_axle_2x2" ? 0.52 : 0.72;
+    const proj = getProjectionParams(canvas, zoom, 0, localSpan, offsetY);
     const ox = Math.floor((localSpan - spec.width) / 2);
     const oy = Math.floor((localSpan - spec.depth) / 2);
 
@@ -532,7 +678,7 @@
         color: colorId
       },
       proj,
-      { alpha: 1.0 }
+      { alpha: 1.0, singlePart: true }
     );
   }
 
