@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RocK Studio: Roc-Based Block Construction</title>
+  <link rel="stylesheet" href="/studio.css" />
+</head>
+<body>
+  <div class="studio-shell">
+    <header class="top-bar">
+      <div class="brand-group">
+        <div class="brand-mark" aria-hidden="true">RK</div>
+        <div>
+          <h1 class="brand-title">RocK Studio: Roc-Based Block Construction</h1>
+          <p class="brand-subtitle">Discrete 3D Stud-and-Tube Lattice Workbench</p>
+        </div>
+      </div>
+
+      <div class="template-switcher" role="group" aria-label="Sample Design Templates">
+        <button id="tpl-race_car" class="tpl-btn active" data-template="race_car" type="button">Car: Modular Roadster</button>
+        <button id="tpl-gondola" class="tpl-btn" data-template="gondola" type="button">Gondola: Venetian &amp; Alpine Gondola</button>
+        <button id="tpl-airplane" class="tpl-btn" data-template="airplane" type="button">Airplane: Swept-Wing Skyplane</button>
+      </div>
+
+      <div class="toolbar-actions">
+        <button id="btn-load-template" class="action-btn primary" type="button">Load Template to Workbench</button>
+        <button id="btn-toggle-guide" class="action-btn active" type="button">Ghost Guide: On</button>
+        <label class="layer-control" for="layer-slider">
+          <span>Step Layer:</span>
+          <input id="layer-slider" type="range" min="0" max="6" step="1" value="6" />
+          <span id="layer-label" class="layer-value">All</span>
+        </label>
+        <button id="btn-undo" class="action-btn" type="button">Undo</button>
+        <button id="btn-redo" class="action-btn" type="button">Redo</button>
+        <button id="btn-clear" class="action-btn danger" type="button">Clear</button>
+      </div>
+
+      <div class="telemetry-strip">
+        <div class="telemetry-badge">
+          <span class="badge-label">Matched Bricks</span>
+          <span id="badge-brick-match" class="badge-value">0%</span>
+        </div>
+        <div class="telemetry-badge">
+          <span class="badge-label">Cell Overlap</span>
+          <span id="badge-cell-overlap" class="badge-value">0%</span>
+        </div>
+        <div class="telemetry-badge">
+          <span class="badge-label">Components</span>
+          <span id="badge-components" class="badge-value">0</span>
+        </div>
+        <div class="telemetry-badge">
+          <span class="badge-label">Grounded</span>
+          <span id="badge-grounded" class="badge-value">Yes</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="workspace-grid">
+      <aside class="panel left-panel" aria-label="Block Palette and Controls">
+        <section class="panel-section">
+          <h2 class="section-title">Color Palette</h2>
+          <div id="color-swatches" class="color-grid"></div>
+        </section>
+
+        <section class="panel-section">
+          <div class="section-header-row">
+            <h2 class="section-title">Orientation</h2>
+            <span class="kbd-hint">Shortcut: R</span>
+          </div>
+          <div id="rotation-controls" class="rotation-grid">
+            <button class="rot-btn active" data-rot="0" type="button">0 deg</button>
+            <button class="rot-btn" data-rot="90" type="button">90 deg</button>
+            <button class="rot-btn" data-rot="180" type="button">180 deg</button>
+            <button class="rot-btn" data-rot="270" type="button">270 deg</button>
+          </div>
+        </section>
+
+        <section class="panel-section palette-scroll">
+          <div class="section-header-row">
+            <h2 class="section-title">Draggable Block Catalog</h2>
+            <span class="hint-text">Drag onto grid or click</span>
+          </div>
+          <div id="catalog-groups" class="catalog-groups"></div>
+        </section>
+      </aside>
+
+      <section class="viewport-panel" aria-label="3D Stud-Lattice Workbench">
+        <div class="viewport-hud-top">
+          <div class="coord-readout">
+            <span class="hud-label">Selected:</span>
+            <span id="hud-selected-part" class="hud-value">Brick 2x4 (Red, 0 deg)</span>
+            <span class="hud-sep">|</span>
+            <span class="hud-label">Snap Lattice:</span>
+            <span id="hud-snap-coords" class="hud-value">(x: -, y: -, z: -)</span>
+          </div>
+          <div class="camera-controls">
+            <button id="btn-cam-ccw" class="cam-btn" type="button" title="Orbit Camera Left">Orbit -90 deg</button>
+            <button id="btn-cam-cw" class="cam-btn" type="button" title="Orbit Camera Right">Orbit +90 deg</button>
+            <button id="btn-zoom-in" class="cam-btn" type="button" title="Zoom In">Zoom +</button>
+            <button id="btn-zoom-out" class="cam-btn" type="button" title="Zoom Out">Zoom -</button>
+          </div>
+        </div>
+
+        <div id="workbench-dropzone" class="canvas-wrapper">
+          <canvas id="workbench-canvas" width="960" height="680"></canvas>
+        </div>
+
+        <div class="viewport-hud-bottom">
+          <span>Drag a block card from the catalog onto the 16x16 baseplate, or click to snap-place. Right-click or Shift-click a block to remove it.</span>
+          <span id="status-message" class="status-pill">Ready</span>
+        </div>
+      </section>
+
+      <aside class="panel right-panel" aria-label="Reference Blueprint and Structural Inspector">
+        <section class="panel-section">
+          <h2 id="ref-title" class="section-title">Modular Roadster</h2>
+          <p id="ref-subtitle" class="ref-desc"></p>
+          <div class="preview-card">
+            <canvas id="reference-canvas" width="320" height="230"></canvas>
+          </div>
+          <div class="preview-controls">
+            <button id="btn-ref-rotate" class="cam-btn" type="button">Rotate View</button>
+            <span id="ref-layer-tag" class="hint-text">Showing all layers</span>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <h2 class="section-title">Structural &amp; Parity Metrics</h2>
+          <dl class="metrics-table">
+            <div class="metric-row">
+              <dt>Placed Bricks</dt>
+              <dd id="metric-placed">0 / 12</dd>
+            </div>
+            <div class="metric-row">
+              <dt>Matched Bricks</dt>
+              <dd id="metric-matched-bricks">0 / 12 (0%)</dd>
+            </div>
+            <div class="metric-row">
+              <dt>Voxel Cell Overlap</dt>
+              <dd id="metric-cell-overlap">0 / 0 (0%)</dd>
+            </div>
+            <div class="metric-row">
+              <dt>Mechanical Stud-Tube Edges</dt>
+              <dd id="metric-edges">0</dd>
+            </div>
+            <div class="metric-row">
+              <dt>Connected Components</dt>
+              <dd id="metric-components">0</dd>
+            </div>
+            <div class="metric-row">
+              <dt>Baseplate Grounded</dt>
+              <dd id="metric-grounded">0 / 0 (Yes)</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="panel-section bom-scroll">
+          <h2 class="section-title">Layer Bill of Materials</h2>
+          <div id="bom-list" class="bom-list"></div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <script src="/studio.js"></script>
+</body>
+</html>
+
